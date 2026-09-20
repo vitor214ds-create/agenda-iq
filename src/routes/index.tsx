@@ -1,104 +1,97 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import type { Session } from "@supabase/supabase-js";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import {
-  ArrowLeft,
-  ArrowRight,
-  BarChart3,
-  Bell,
   Bot,
   CalendarDays,
   Check,
   CheckCircle2,
   ChevronRight,
   Clock3,
-  Copy,
-  CreditCard,
   ExternalLink,
   Eye,
   EyeOff,
   Home,
   Link2,
+  LoaderCircle,
   LockKeyhole,
   LogOut,
   Menu,
   MessageCircle,
-  MoreHorizontal,
   Plus,
-  QrCode,
-  Search,
-  Send,
+  RefreshCw,
+  Save,
   Settings,
   ShieldCheck,
   Smartphone,
   Sparkles,
+  Trash2,
   Users,
-  UserRound,
-  WandSparkles,
   Wifi,
   X,
-  Zap,
 } from "lucide-react";
-import { BrandLogo, BrandMark, Mascot } from "../components/brand";
+import { toast } from "sonner";
+import { BrandLogo, BrandMark } from "../components/brand";
 import {
-  appointments,
-  conversations,
-  demoCredentials,
-  services,
-  timeSlots,
-  weekDays,
-} from "../data/demo";
+  supabase,
+  type Appointment,
+  type Client,
+  type Organization,
+  type Professional,
+  type Service,
+} from "../lib/supabase";
 
 export const Route = createFileRoute("/")({ component: App });
-type Screen = "landing" | "login" | "dashboard" | "booking";
-type View =
-  | "inicio"
-  | "agenda"
-  | "conversas"
-  | "clientes"
-  | "servicos"
-  | "whatsapp"
-  | "relatorios"
-  | "configuracoes";
+type View = "inicio" | "agenda" | "clientes" | "servicos" | "whatsapp" | "configuracoes";
 
 function App() {
-  const [screen, setScreen] = useState<Screen>("landing");
+  const [session, setSession] = useState<Session | null>(null);
+  const [ready, setReady] = useState(false);
+  const [login, setLogin] = useState(false);
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setReady(true);
+    });
+    const { data } = supabase.auth.onAuthStateChange((_event, next) => setSession(next));
+    return () => data.subscription.unsubscribe();
+  }, []);
+  if (!ready) return <FullLoader />;
+  if (session) return <Dashboard session={session} />;
+  if (login) return <Login back={() => setLogin(false)} />;
+  return <Landing login={() => setLogin(true)} />;
+}
+
+function FullLoader() {
   return (
-    <main className="app-shell">
-      {screen === "landing" && <Landing go={setScreen} />}
-      {screen === "login" && (
-        <Login back={() => setScreen("landing")} success={() => setScreen("dashboard")} />
-      )}
-      {screen === "dashboard" && (
-        <Dashboard exit={() => setScreen("landing")} booking={() => setScreen("booking")} />
-      )}
-      {screen === "booking" && <Booking back={() => setScreen("landing")} />}
+    <main className="full-loader">
+      <BrandLogo />
+      <LoaderCircle className="spin" />
+      <span>Carregando sua conta…</span>
     </main>
   );
 }
 
-function Landing({ go }: { go: (s: Screen) => void }) {
+function Landing({ login }: { login: () => void }) {
   const [menu, setMenu] = useState(false);
   return (
-    <div className="landing">
+    <main className="landing">
       <nav className="nav container">
         <BrandLogo />
         <div className={`nav__links ${menu ? "is-open" : ""}`}>
           <a href="#como-funciona">Como funciona</a>
           <a href="#recursos">Recursos</a>
           <a href="#preco">Preço</a>
-          <button className="btn btn--ghost mobile-only" onClick={() => go("login")}>
-            Entrar
-          </button>
         </div>
         <div className="nav__actions">
-          <button className="btn btn--ghost" onClick={() => go("login")}>
+          <button className="btn btn--ghost" onClick={login}>
             Entrar
           </button>
-          <button className="btn btn--dark" onClick={() => go("dashboard")}>
-            Ver demonstração <ArrowRight size={16} />
-          </button>
+          <a className="btn btn--dark" href="#preco">
+            Começar agora <ChevronRight size={17} />
+          </a>
         </div>
-        <button className="nav__menu" onClick={() => setMenu(!menu)}>
+        <button className="nav__menu" aria-label="Abrir menu" onClick={() => setMenu((v) => !v)}>
           {menu ? <X /> : <Menu />}
         </button>
       </nav>
@@ -111,23 +104,23 @@ function Landing({ go }: { go: (s: Screen) => void }) {
             Transforme conversas em <span>agendamentos confirmados.</span>
           </h1>
           <p>
-            O AgendaIQ responde seus clientes, envia o link de agendamento, organiza horários e
-            confirma tudo automaticamente pelo WhatsApp.
+            O AgendaIQ responde seus clientes, envia o link de atendimento, encontra horários livres
+            e confirma tudo automaticamente pelo WhatsApp.
           </p>
           <div className="hero__actions">
-            <button className="btn btn--primary btn--lg" onClick={() => go("dashboard")}>
-              Experimentar o AgendaIQ <ArrowRight />
-            </button>
-            <button className="btn btn--soft btn--lg" onClick={() => go("booking")}>
-              <CalendarDays /> Testar agendamento
+            <a className="btn btn--primary btn--lg" href="#preco">
+              Assinar por R$ 49,90 <ChevronRight />
+            </a>
+            <button className="btn btn--soft btn--lg" onClick={login}>
+              <LockKeyhole /> Já sou cliente
             </button>
           </div>
           <div className="hero__trust">
             <span>
-              <CheckCircle2 /> 7 dias grátis
+              <CheckCircle2 /> Sem fidelidade
             </span>
             <span>
-              <CheckCircle2 /> Sem fidelidade
+              <CheckCircle2 /> Dados protegidos
             </span>
             <span>
               <CheckCircle2 /> Configuração guiada
@@ -147,32 +140,27 @@ function Landing({ go }: { go: (s: Screen) => void }) {
                 <BrandMark />
               </div>
               <div>
-                <strong>Studio Atlas</strong>
+                <strong>Seu negócio</strong>
                 <small>online agora</small>
               </div>
-              <MoreHorizontal />
             </div>
             <div className="chat-wall">
-              <div className="bubble bubble--in">
-                Olá! Gostaria de agendar um corte para amanhã.
-              </div>
+              <div className="bubble bubble--in">Olá! Gostaria de agendar um horário.</div>
               <div className="bubble bubble--out">
-                Oi, Lucas! 👋 Encontrei os horários disponíveis para você. Toque no link para
-                escolher:
+                Olá! 👋 Vou te ajudar. Acesse seu atendimento e escolha o melhor horário:
               </div>
-              <button className="booking-link" onClick={() => go("booking")}>
+              <div className="booking-link">
                 <CalendarDays />
                 <span>
                   <strong>Escolher meu horário</strong>
-                  <small>agendaiq.com.br/studio-atlas</small>
+                  <small>Atendimento seguro AgendaIQ</small>
                 </span>
                 <ChevronRight />
-              </button>
-              <div className="bubble bubble--in bubble--short">Agendado! ✅</div>
+              </div>
               <div className="bubble bubble--out">
                 <strong>Tudo certo!</strong>
                 <br />
-                Seu Corte + Barba está confirmado para amanhã, às 10h.
+                Seu horário foi confirmado. ✅
               </div>
             </div>
           </div>
@@ -180,1309 +168,1059 @@ function Landing({ go }: { go: (s: Screen) => void }) {
             <span className="status-pulse" />
             <div>
               <strong>IA atendendo agora</strong>
-              <small>Resposta em 3 segundos</small>
+              <small>24 horas por dia</small>
             </div>
-          </div>
-          <div className="float-card float-card--bottom">
-            <CheckCircle2 />
-            <div>
-              <strong>+32 agendamentos</strong>
-              <small>esta semana</small>
-            </div>
-          </div>
-        </div>
-      </section>
-      <section className="social-proof">
-        <div className="container proof-grid">
-          <div>
-            <strong>24h</strong>
-            <span>atendendo por você</span>
-          </div>
-          <div>
-            <strong>3s</strong>
-            <span>tempo médio de resposta</span>
-          </div>
-          <div>
-            <strong>+38%</strong>
-            <span>mais horários preenchidos</span>
-          </div>
-          <div>
-            <strong>100%</strong>
-            <span>responsivo e online</span>
           </div>
         </div>
       </section>
       <section id="como-funciona" className="section container">
-        <Title
-          eyebrow="FLUXO AUTOMÁTICO"
-          title="Do primeiro “olá” ao horário confirmado."
-          text="Uma experiência simples para o cliente e uma operação muito mais leve para sua equipe."
-        />
+        <SectionTitle label="FLUXO AUTOMÁTICO" title="Do primeiro olá ao horário confirmado." />
         <div className="steps">
           {[
-            [
-              MessageCircle,
-              "Mensagem recebida",
-              "O cliente chama sua empresa no WhatsApp normalmente.",
-            ],
-            [Link2, "Link inteligente", "O AgendaIQ responde e envia o seu link personalizado."],
-            [
-              Bot,
-              "Escolha assistida",
-              "A IA tira dúvidas e apresenta apenas horários realmente livres.",
-            ],
-            [
-              CheckCircle2,
-              "Tudo confirmado",
-              "O horário entra na agenda e o cliente recebe a confirmação.",
-            ],
-          ].map(([Icon, t, p], i) => (
-            <div className="step-card" key={String(t)}>
+            [MessageCircle, "Mensagem recebida", "O cliente chama no WhatsApp."],
+            [Link2, "Link inteligente", "O AgendaIQ envia o atendimento."],
+            [Bot, "Escolha assistida", "A IA consulta horários reais."],
+            [CheckCircle2, "Confirmação", "Tudo entra na agenda."],
+          ].map(([Icon, title, text], i) => (
+            <article className="step-card" key={String(title)}>
               <div className="step-card__number">0{i + 1}</div>
               <div className="step-card__icon">
                 <Icon />
               </div>
-              <h3>{String(t)}</h3>
-              <p>{String(p)}</p>
-            </div>
+              <h3>{String(title)}</h3>
+              <p>{String(text)}</p>
+            </article>
           ))}
         </div>
       </section>
       <section id="recursos" className="section section--ink">
         <div className="container feature-stage">
           <div className="feature-stage__copy">
-            <span className="overline">FEITO PARA GANHAR TEMPO</span>
-            <h2>Menos mensagens repetidas. Mais clientes atendidos.</h2>
+            <span className="overline">OPERAÇÃO COMPLETA</span>
+            <h2>Agenda, clientes e WhatsApp em um só lugar.</h2>
             <p>
-              Centralize sua agenda, equipe, serviços e conversas em um único lugar — com
-              inteligência que trabalha junto com você.
+              Gerencie serviços, profissionais e horários com dados em tempo real e isolamento
+              seguro entre empresas.
             </p>
-            <div className="feature-list">
-              {[
-                ["Agenda em tempo real", "Sem horários duplicados ou conflitos."],
-                ["Atendimento com IA", "Respostas baseadas nas informações da sua empresa."],
-                ["WhatsApp conectado", "QR Code no computador ou código pelo celular."],
-                ["Lembretes automáticos", "Reduza faltas sem trabalho manual."],
-              ].map((x) => (
-                <div key={x[0]}>
-                  <Check />
-                  <span>
-                    <strong>{x[0]}</strong>
-                    <small>{x[1]}</small>
-                  </span>
-                </div>
-              ))}
-            </div>
           </div>
-          <DashboardPreview />
-        </div>
-      </section>
-      <section id="preco" className="section container price-section">
-        <div className="price-copy">
-          <span className="overline">PREÇO SIMPLES</span>
-          <h2>Tudo o que você precisa por menos de dois reais por dia.</h2>
-          <p>Comece com sete dias gratuitos. Cancele quando quiser.</p>
-        </div>
-        <div className="price-card">
-          <div className="price-card__badge">PLANO COMPLETO</div>
-          <BrandMark />
-          <h3>AgendaIQ Profissional</h3>
-          <div className="price">
-            <sup>R$</sup>
-            <strong>49</strong>
-            <span>
-              ,90
-              <br />
-              <small>/mês</small>
-            </span>
-          </div>
-          <ul>
+          <div className="feature-grid">
             {[
-              "Agenda online completa",
-              "Atendimento inteligente",
-              "Link personalizado",
-              "Conexão com WhatsApp",
-              "Clientes e serviços ilimitados",
-              "Relatórios essenciais",
-            ].map((x) => (
-              <li key={x}>
-                <Check /> {x}
-              </li>
+              [CalendarDays, "Agenda real"],
+              [Bot, "IA de atendimento"],
+              [Smartphone, "WhatsApp oficial"],
+              [ShieldCheck, "Acesso protegido"],
+            ].map(([Icon, t]) => (
+              <div className="mini-feature" key={String(t)}>
+                <Icon />
+                <strong>{String(t)}</strong>
+                <Check />
+              </div>
             ))}
+          </div>
+        </div>
+      </section>
+      <section id="preco" className="section container pricing-wrap">
+        <SectionTitle label="PLANO SIMPLES" title="Tudo por R$ 49,90 por mês." />
+        <div className="price-card">
+          <span>AgendaIQ Essencial</span>
+          <strong>
+            <small>R$</small> 49,90<small>/mês</small>
+          </strong>
+          <ul>
+            <li>
+              <Check />
+              Agenda online
+            </li>
+            <li>
+              <Check />
+              Clientes e serviços
+            </li>
+            <li>
+              <Check />
+              Atendimento com IA
+            </li>
+            <li>
+              <Check />
+              Integração WhatsApp
+            </li>
           </ul>
-          <button className="btn btn--primary btn--lg" onClick={() => go("dashboard")}>
-            Começar gratuitamente <ArrowRight />
+          <button
+            className="btn btn--primary btn--lg"
+            onClick={() => toast.info("O checkout Cakto será conectado na próxima etapa.")}
+          >
+            Quero contratar <ChevronRight />
+          </button>
+          <small>Checkout Cakto será conectado antes da abertura das vendas.</small>
+        </div>
+      </section>
+      <footer>
+        <div className="container">
+          <BrandLogo />
+          <span>© 2026 AgendaIQ. Todos os direitos reservados.</span>
+          <button className="btn btn--ghost" onClick={login}>
+            Entrar
           </button>
         </div>
-      </section>
-      <section className="cta">
-        <Mascot className="cta__mascot" />
-        <div>
-          <span>SEU TEMPO, BEM CUIDADO.</span>
-          <h2>Sua agenda pode começar a trabalhar por você hoje.</h2>
-          <p>Teste o painel completo e veja como o AgendaIQ transforma seu atendimento.</p>
-        </div>
-        <button className="btn btn--light btn--lg" onClick={() => go("dashboard")}>
-          Conhecer por dentro <ArrowRight />
-        </button>
-      </section>
-      <footer className="footer container">
-        <BrandLogo />
-        <p>Conversas que viram agendamentos.</p>
-        <span>© 2026 AgendaIQ</span>
       </footer>
-    </div>
+    </main>
   );
 }
-
-function Title({ eyebrow, title, text }: { eyebrow: string; title: string; text: string }) {
+function SectionTitle({ label, title }: { label: string; title: string }) {
   return (
-    <div className="section-heading">
-      <span>{eyebrow}</span>
+    <div className="section-title">
+      <span>{label}</span>
       <h2>{title}</h2>
-      <p>{text}</p>
-    </div>
-  );
-}
-function DashboardPreview() {
-  return (
-    <div className="dashboard-preview">
-      <div className="preview-side">
-        <BrandLogo compact inverse />
-        <Home />
-        <CalendarDays />
-        <MessageCircle />
-        <Users />
-        <BarChart3 />
-      </div>
-      <div className="preview-main">
-        <div className="preview-head">
-          <div>
-            <small>Visão geral</small>
-            <h3>Bom dia, Mariana! 👋</h3>
-          </div>
-          <button>
-            <Plus /> Novo agendamento
-          </button>
-        </div>
-        <div className="preview-stats">
-          <div>
-            <span>Hoje</span>
-            <strong>12</strong>
-            <small>+3 que ontem</small>
-          </div>
-          <div>
-            <span>Confirmados</span>
-            <strong>10</strong>
-            <small>83% da agenda</small>
-          </div>
-          <div>
-            <span>Conversão da IA</span>
-            <strong>78%</strong>
-            <small>+12% no mês</small>
-          </div>
-        </div>
-        <div className="preview-chart">
-          <div className="chart-title">
-            <strong>Agendamentos</strong>
-            <span>Últimos 7 dias</span>
-          </div>
-          <div className="bars">
-            {[38, 64, 50, 82, 70, 94, 72].map((h, i) => (
-              <i key={i} style={{ height: `${h}%` }} />
-            ))}
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
 
-function Login({ back, success }: { back: () => void; success: () => void }) {
-  const [email, setEmail] = useState(demoCredentials.email);
-  const [password, setPassword] = useState(demoCredentials.password);
+function Login({ back }: { back: () => void }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
-  const [error, setError] = useState("");
-  const submit = (e: React.FormEvent) => {
+  const [busy, setBusy] = useState(false);
+  const [forgot, setForgot] = useState(false);
+  async function submit(e: FormEvent) {
     e.preventDefault();
-    if (email === demoCredentials.email && password === demoCredentials.password) {
-      success();
-      return;
+    setBusy(true);
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    setBusy(false);
+    if (error)
+      toast.error(
+        error.message === "Invalid login credentials"
+          ? "E-mail ou senha incorretos."
+          : "Não foi possível entrar. Tente novamente.",
+      );
+  }
+  async function reset() {
+    if (!email.trim()) return toast.error("Digite seu e-mail primeiro.");
+    setBusy(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: window.location.origin,
+    });
+    setBusy(false);
+    if (error) toast.error("Não foi possível enviar o link.");
+    else {
+      toast.success("Link de redefinição enviado.");
+      setForgot(false);
     }
-    setError("Use os dados da conta demonstrativa exibidos abaixo.");
-  };
+  }
   return (
-    <div className="auth-page">
-      <button className="back-button" onClick={back}>
-        <ArrowLeft /> Voltar ao site
+    <main className="auth-page">
+      <button className="auth-back" onClick={back}>
+        ← Voltar
       </button>
-      <div className="auth-art">
-        <BrandLogo inverse />
-        <div className="auth-quote">
-          <Mascot className="auth-mascot" />
-          <span>CONVERSAS QUE VIRAM AGENDAMENTOS</span>
-          <h2>Bem-vindo ao futuro do seu atendimento.</h2>
-          <p>Organize sua operação e deixe a IA cuidar das tarefas repetitivas.</p>
+      <section className="auth-card">
+        <BrandLogo />
+        <div>
+          <span className="overline">ACESSO SEGURO</span>
+          <h1>Entre na sua conta</h1>
+          <p>Use o acesso enviado após a confirmação da sua assinatura.</p>
         </div>
-      </div>
-      <div className="auth-form-wrap">
-        <form className="auth-form" onSubmit={submit}>
-          <div className="mobile-brand">
-            <BrandLogo />
-          </div>
-          <span className="overline">ÁREA DO CLIENTE</span>
-          <h1>Acesse sua conta</h1>
-          <p>Entre para acompanhar sua agenda e seus atendimentos.</p>
+        <form onSubmit={submit}>
           <label>
             E-mail
-            <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" />
+            <input
+              type="email"
+              autoComplete="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="voce@empresa.com.br"
+            />
           </label>
           <label>
             Senha
             <div className="password-field">
               <input
+                type={show ? "text" : "password"}
+                autoComplete="current-password"
+                required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                type={show ? "text" : "password"}
+                placeholder="Sua senha"
               />
-              <button type="button" onClick={() => setShow(!show)}>
+              <button type="button" aria-label="Mostrar senha" onClick={() => setShow((v) => !v)}>
                 {show ? <EyeOff /> : <Eye />}
               </button>
             </div>
           </label>
-          {error && <div className="form-error">{error}</div>}
-          <button className="btn btn--primary btn--lg">
-            Entrar no AgendaIQ <ArrowRight />
+          <button type="button" className="text-button" onClick={() => setForgot((v) => !v)}>
+            Esqueci minha senha
           </button>
-          <div className="demo-box">
-            <span>CONTA DE DEMONSTRAÇÃO</span>
-            <div>
-              <code>{demoCredentials.email}</code>
-              <button
-                type="button"
-                onClick={() => navigator.clipboard?.writeText(demoCredentials.email)}
-              >
-                <Copy />
-              </button>
-            </div>
-            <div>
-              <code>{demoCredentials.password}</code>
-              <button
-                type="button"
-                onClick={() => navigator.clipboard?.writeText(demoCredentials.password)}
-              >
-                <Copy />
-              </button>
-            </div>
-          </div>
-          <small className="auth-safe">
-            <ShieldCheck /> Ambiente demonstrativo seguro
-          </small>
+          {forgot && (
+            <button type="button" className="btn btn--soft" onClick={reset}>
+              Enviar link de redefinição
+            </button>
+          )}
+          <button className="btn btn--primary btn--lg" disabled={busy}>
+            {busy ? <LoaderCircle className="spin" /> : <LockKeyhole />}
+            {busy ? "Entrando…" : "Entrar no AgendaIQ"}
+          </button>
         </form>
-      </div>
-    </div>
+        <div className="auth-security">
+          <ShieldCheck />
+          <span>Conexão segura. Não há conta de demonstração ou senha pública.</span>
+        </div>
+      </section>
+    </main>
   );
 }
 
-const nav: Array<[View, typeof Home, string]> = [
-  ["inicio", Home, "Início"],
-  ["agenda", CalendarDays, "Agenda"],
-  ["conversas", MessageCircle, "Conversas"],
-  ["clientes", Users, "Clientes"],
-  ["servicos", WandSparkles, "Serviços"],
-  ["whatsapp", Smartphone, "WhatsApp"],
-  ["relatorios", BarChart3, "Relatórios"],
-  ["configuracoes", Settings, "Configurações"],
-];
-function Dashboard({ exit, booking }: { exit: () => void; booking: () => void }) {
-  const [view, setView] = useState<View>("inicio");
-  const [side, setSide] = useState(false);
-  const labels: Record<View, string> = {
-    inicio: "Visão geral",
-    agenda: "Agenda",
-    conversas: "Conversas",
-    clientes: "Clientes",
-    servicos: "Serviços",
-    whatsapp: "Conectar WhatsApp",
-    relatorios: "Relatórios",
-    configuracoes: "Configurações",
-  };
+function Dashboard({ session }: { session: Session }) {
+  const [view, setView] = useState<View>("inicio"),
+    [mobile, setMobile] = useState(false),
+    [loading, setLoading] = useState(true),
+    [org, setOrg] = useState<Organization | null>(null),
+    [services, setServices] = useState<Service[]>([]),
+    [professionals, setProfessionals] = useState<Professional[]>([]),
+    [clients, setClients] = useState<Client[]>([]),
+    [appointments, setAppointments] = useState<Appointment[]>([]),
+    [error, setError] = useState("");
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    const { data: member, error: memberError } = await supabase
+      .from("organization_members")
+      .select("organization_id, organizations(*)")
+      .eq("user_id", session.user.id)
+      .limit(1)
+      .maybeSingle();
+    if (memberError || !member) {
+      setLoading(false);
+      setError(
+        "Sua conta ainda não está vinculada a uma empresa. O acesso precisa ser liberado após o pagamento.",
+      );
+      return;
+    }
+    const organization = (
+      Array.isArray(member.organizations) ? member.organizations[0] : member.organizations
+    ) as Organization;
+    setOrg(organization);
+    const id = member.organization_id;
+    const [s, p, c, a] = await Promise.all([
+      supabase.from("services").select("*").eq("organization_id", id).order("name"),
+      supabase.from("professionals").select("*").eq("organization_id", id).order("name"),
+      supabase
+        .from("clients")
+        .select("*")
+        .eq("organization_id", id)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("appointments")
+        .select("*,clients(name,phone),services(name),professionals(name)")
+        .eq("organization_id", id)
+        .order("starts_at"),
+    ]);
+    if ([s.error, p.error, c.error, a.error].some(Boolean))
+      setError("Não foi possível carregar todos os dados. Atualize a página.");
+    setServices((s.data || []) as Service[]);
+    setProfessionals((p.data || []) as Professional[]);
+    setClients((c.data || []) as Client[]);
+    setAppointments((a.data || []) as Appointment[]);
+    setLoading(false);
+  }, [session.user.id]);
+  useEffect(() => {
+    void load();
+  }, [load]);
+  if (loading) return <FullLoader />;
+  if (error && !org)
+    return (
+      <main className="empty-account">
+        <BrandLogo />
+        <ShieldCheck />
+        <h1>Acesso protegido</h1>
+        <p>{error}</p>
+        <button className="btn btn--soft" onClick={() => supabase.auth.signOut()}>
+          Sair
+        </button>
+      </main>
+    );
+  const nav: Array<[View, typeof Home, string]> = [
+    ["inicio", Home, "Início"],
+    ["agenda", CalendarDays, "Agenda"],
+    ["clientes", Users, "Clientes"],
+    ["servicos", Sparkles, "Serviços"],
+    ["whatsapp", Smartphone, "WhatsApp"],
+    ["configuracoes", Settings, "Configurações"],
+  ];
   return (
-    <div className="dash">
-      <aside className={`sidebar ${side ? "is-open" : ""}`}>
-        <div className="sidebar__logo">
-          <BrandLogo inverse />
-          <button onClick={() => setSide(false)}>
+    <main className="dashboard">
+      <aside className={`sidebar ${mobile ? "is-open" : ""}`}>
+        <div className="sidebar__brand">
+          <BrandLogo />
+          <button onClick={() => setMobile(false)}>
             <X />
           </button>
         </div>
-        <div className="company-switch">
-          <div>SA</div>
-          <span>
-            <strong>Studio Atlas</strong>
-            <small>Plano Profissional</small>
-          </span>
-          <ChevronRight />
-        </div>
         <nav>
-          {nav.map(([id, Icon, label]) => (
+          {nav.map(([key, Icon, label]) => (
             <button
-              key={id}
-              className={view === id ? "active" : ""}
+              key={key}
+              className={view === key ? "active" : ""}
               onClick={() => {
-                setView(id);
-                setSide(false);
+                setView(key);
+                setMobile(false);
               }}
             >
               <Icon />
               {label}
-              {id === "conversas" && <b>3</b>}
             </button>
           ))}
         </nav>
-        <div className="sidebar__bottom">
-          <div className="trial-card">
-            <Sparkles />
-            <strong>7 dias gratuitos</strong>
-            <span>Teste todos os recursos.</span>
-            <i>
-              <em style={{ width: "62%" }} />
-            </i>
-            <small>4 dias restantes</small>
+        <div className="sidebar__footer">
+          <div className="account-chip">
+            <div>{org?.name?.slice(0, 2).toUpperCase()}</div>
+            <span>
+              <strong>{org?.name}</strong>
+              <small>{session.user.email}</small>
+            </span>
           </div>
-          <button onClick={exit}>
-            <LogOut /> Sair da demonstração
+          <button onClick={() => supabase.auth.signOut()}>
+            <LogOut /> Sair
           </button>
         </div>
       </aside>
-      <section className="dash-content">
-        <header className="dash-top">
-          <button className="dash-menu" onClick={() => setSide(true)}>
+      <section className="workspace">
+        <header className="topbar">
+          <button className="mobile-trigger" onClick={() => setMobile(true)}>
             <Menu />
           </button>
           <div>
-            <small>STUDIO ATLAS</small>
-            <h1>{labels[view]}</h1>
+            <span className="overline">AGENDAIQ</span>
+            <h1>{nav.find((n) => n[0] === view)?.[2]}</h1>
           </div>
-          <div className="dash-top__actions">
-            <button className="icon-btn">
-              <Search />
-            </button>
-            <button className="icon-btn notification">
-              <Bell />
-              <i />
-            </button>
-            <button className="profile">
-              <span>MS</span>
-              <div>
-                <strong>Mariana Silva</strong>
-                <small>Proprietária</small>
-              </div>
-              <ChevronRight />
-            </button>
-          </div>
+          <button className="icon-btn" aria-label="Atualizar" onClick={() => void load()}>
+            <RefreshCw />
+          </button>
         </header>
-        <div className="dash-body">
-          {view === "inicio" && <HomeView go={setView} />} {view === "agenda" && <AgendaView />}{" "}
-          {view === "conversas" && <ConversationsView />} {view === "clientes" && <ClientsView />}{" "}
-          {view === "servicos" && <ServicesView />} {view === "whatsapp" && <WhatsAppView />}{" "}
-          {view === "relatorios" && <ReportsView />}{" "}
-          {view === "configuracoes" && <SettingsView booking={booking} />}
+        {error && <div className="inline-error">{error}</div>}
+        <div className="workspace__body">
+          {view === "inicio" && (
+            <Overview
+              org={org!}
+              appointments={appointments}
+              clients={clients}
+              services={services}
+            />
+          )}{" "}
+          {view === "agenda" && (
+            <Agenda
+              org={org!}
+              appointments={appointments}
+              clients={clients}
+              services={services}
+              professionals={professionals}
+              reload={load}
+            />
+          )}{" "}
+          {view === "clientes" && <Clients org={org!} items={clients} reload={load} />}{" "}
+          {view === "servicos" && (
+            <Services org={org!} items={services} professionals={professionals} reload={load} />
+          )}{" "}
+          {view === "whatsapp" && <WhatsApp org={org!} />}{" "}
+          {view === "configuracoes" && <Configuration org={org!} reload={load} />}
         </div>
       </section>
+    </main>
+  );
+}
+
+function Overview({
+  org,
+  appointments,
+  clients,
+  services,
+}: {
+  org: Organization;
+  appointments: Appointment[];
+  clients: Client[];
+  services: Service[];
+}) {
+  const today = new Date().toDateString(),
+    todayItems = appointments.filter(
+      (a) => new Date(a.starts_at).toDateString() === today && a.status !== "cancelado",
+    );
+  return (
+    <>
+      <div className="welcome">
+        <div>
+          <span className="eyebrow">
+            <Sparkles /> Operação em tempo real
+          </span>
+          <h2>Olá! Sua agenda está pronta.</h2>
+          <p>Todos os números abaixo vêm diretamente da sua conta.</p>
+        </div>
+        <div className="live-pill">
+          <span />
+          Dados sincronizados
+        </div>
+      </div>
+      <div className="stats">
+        <Stat icon={CalendarDays} label="Hoje" value={todayItems.length} />
+        <Stat icon={Users} label="Clientes" value={clients.length} />
+        <Stat
+          icon={Sparkles}
+          label="Serviços ativos"
+          value={services.filter((s) => s.is_active).length}
+        />
+        <Stat
+          icon={Bot}
+          label="Agendados pela IA"
+          value={appointments.filter((a) => a.created_by_ai).length}
+        />
+      </div>
+      <div className="panel">
+        <div className="panel__head">
+          <div>
+            <span>PRÓXIMOS HORÁRIOS</span>
+            <h3>Agenda de hoje</h3>
+          </div>
+        </div>
+        {todayItems.length ? (
+          <div className="rows">
+            {todayItems.slice(0, 6).map((a) => (
+              <AppointmentRow key={a.id} item={a} />
+            ))}
+          </div>
+        ) : (
+          <Empty
+            icon={CalendarDays}
+            title="Nenhum horário para hoje"
+            text={`A agenda da ${org.name} está livre hoje.`}
+          />
+        )}
+      </div>
+    </>
+  );
+}
+function Stat({ icon: Icon, label, value }: { icon: typeof Home; label: string; value: number }) {
+  return (
+    <div className="stat">
+      <div>
+        <Icon />
+      </div>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+function AppointmentRow({ item }: { item: Appointment }) {
+  return (
+    <div className="data-row">
+      <div className="time-block">
+        <strong>
+          {new Date(item.starts_at).toLocaleTimeString("pt-BR", {
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
+        </strong>
+        <small>{new Date(item.starts_at).toLocaleDateString("pt-BR")}</small>
+      </div>
+      <div>
+        <strong>{item.clients?.name || "Cliente"}</strong>
+        <small>
+          {item.services?.name || "Serviço"} · {item.professionals?.name || "Profissional"}
+        </small>
+      </div>
+      <span className={`status status--${item.status}`}>{item.status}</span>
     </div>
   );
 }
 
-function HomeView({ go }: { go: (v: View) => void }) {
-  return (
-    <>
-      <div className="welcome-row">
-        <div>
-          <span>QUARTA-FEIRA, 23 DE SETEMBRO</span>
-          <h2>Bom dia, Mariana! 👋</h2>
-          <p>Sua agenda está movimentada. O Q já confirmou 8 clientes hoje.</p>
-        </div>
-        <button className="btn btn--primary">
-          <Plus /> Novo agendamento
-        </button>
-      </div>
-      <div className="stat-grid">
-        {[
-          [CalendarDays, "12", "Agendamentos hoje", "+3", "indigo"],
-          [CheckCircle2, "10", "Confirmados", "83%", "mint"],
-          [MessageCircle, "24", "Conversas da IA", "+18%", "coral"],
-          [Zap, "78%", "Conversão em agenda", "+12%", "indigo"],
-        ].map(([Icon, n, l, d, c]) => (
-          <div className="stat-card" key={String(l)}>
-            <div className={`stat-icon ${c}`}>
-              <Icon />
-            </div>
-            <span>{String(l)}</span>
-            <strong>{String(n)}</strong>
-            <small>
-              {String(d)} <em>esta semana</em>
-            </small>
-          </div>
-        ))}
-      </div>
-      <div className="home-grid">
-        <Panel
-          title="Próximos agendamentos"
-          subtitle="Agenda de hoje"
-          action={
-            <button onClick={() => go("agenda")}>
-              Ver agenda <ArrowRight />
-            </button>
-          }
-        >
-          <div className="appointment-list">
-            {appointments.slice(0, 4).map((a) => (
-              <div className="appointment" key={a.time}>
-                <div className="appointment__time">
-                  <strong>{a.time}</strong>
-                  <span>HOJE</span>
-                </div>
-                <i className={a.color} />
-                <div>
-                  <strong>{a.name}</strong>
-                  <span>
-                    {a.service} · {a.professional}
-                  </span>
-                </div>
-                <b className={a.status === "Confirmado" ? "ok" : "wait"}>{a.status}</b>
-                <MoreHorizontal />
-              </div>
-            ))}
-          </div>
-        </Panel>
-        <Panel
-          title="Atendimento inteligente"
-          subtitle="Desempenho do Q hoje"
-          className="ai-panel"
-          action={
-            <span className="live">
-              <i /> ONLINE
-            </span>
-          }
-        >
-          <div className="ai-summary">
-            <Mascot className="ai-mascot" />
-            <div>
-              <strong>18 clientes atendidos</strong>
-              <span>14 agendaram sem ajuda humana</span>
-            </div>
-          </div>
-          <div className="ai-metrics">
-            <div>
-              <span>Tempo médio</span>
-              <strong>3s</strong>
-            </div>
-            <div>
-              <span>Resolvidas pela IA</span>
-              <strong>78%</strong>
-            </div>
-          </div>
-          <button className="btn btn--soft" onClick={() => go("conversas")}>
-            Abrir conversas <ArrowRight />
-          </button>
-        </Panel>
-      </div>
-      <Panel title="Movimento da semana" subtitle="Agendamentos confirmados" className="activity">
-        <div className="activity-chart">
-          <div className="activity-y">
-            <span>40</span>
-            <span>30</span>
-            <span>20</span>
-            <span>10</span>
-            <span>0</span>
-          </div>
-          <div className="activity-bars">
-            {[
-              ["SEG", 18],
-              ["TER", 25],
-              ["QUA", 31],
-              ["QUI", 22],
-              ["SEX", 36],
-              ["SÁB", 29],
-              ["DOM", 12],
-            ].map(([d, h]) => (
-              <div key={d}>
-                <i style={{ height: `${Number(h) * 3.6}px` }} />
-                <span>{d}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </Panel>
-    </>
-  );
-}
-function Panel({
-  title,
-  subtitle,
-  action,
-  children,
-  className = "",
+function Agenda({
+  org,
+  appointments,
+  clients,
+  services,
+  professionals,
+  reload,
 }: {
-  title: string;
-  subtitle: string;
-  action?: React.ReactNode;
-  children: React.ReactNode;
-  className?: string;
+  org: Organization;
+  appointments: Appointment[];
+  clients: Client[];
+  services: Service[];
+  professionals: Professional[];
+  reload: () => Promise<void>;
 }) {
-  return (
-    <section className={`panel ${className}`}>
-      <div className="panel-head">
-        <div>
-          <h3>{title}</h3>
-          <p>{subtitle}</p>
-        </div>
-        {action}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function AgendaView() {
-  const [selected, setSelected] = useState(2);
+  const [open, setOpen] = useState(false),
+    [busy, setBusy] = useState(false);
+  async function add(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget),
+      service = services.find((s) => s.id === f.get("service_id"));
+    if (!service) return;
+    const start = new Date(String(f.get("starts_at")));
+    setBusy(true);
+    const { error } = await supabase.from("appointments").insert({
+      organization_id: org.id,
+      client_id: f.get("client_id"),
+      service_id: service.id,
+      professional_id: f.get("professional_id") || null,
+      starts_at: start.toISOString(),
+      ends_at: new Date(start.getTime() + service.duration_minutes * 60000).toISOString(),
+      status: "agendado",
+      notes: String(f.get("notes") || ""),
+    });
+    setBusy(false);
+    if (error) toast.error("Não foi possível criar. Verifique conflito de horário.");
+    else {
+      toast.success("Agendamento criado.");
+      setOpen(false);
+      await reload();
+    }
+  }
+  async function cancel(id: string) {
+    const { error } = await supabase
+      .from("appointments")
+      .update({ status: "cancelado" })
+      .eq("id", id);
+    if (error) toast.error("Não foi possível cancelar.");
+    else await reload();
+  }
   return (
     <>
-      <div className="toolbar">
-        <div className="segmented">
-          <button className="active">Semana</button>
-          <button>Dia</button>
-          <button>Mês</button>
-        </div>
-        <button className="btn btn--primary">
-          <Plus /> Novo horário
-        </button>
-      </div>
-      <div className="calendar-week">
-        {weekDays.map((d, i) => (
-          <button
-            key={d.day}
-            className={selected === i ? "active" : ""}
-            onClick={() => setSelected(i)}
-          >
-            <span>{d.week}</span>
-            <strong>{d.day}</strong>
-            <small>{d.appointments} horários</small>
-          </button>
-        ))}
-      </div>
-      <Panel
-        title="Quarta-feira, 23 de setembro"
-        subtitle="5 agendamentos · 2 horários disponíveis"
-        className="agenda-panel"
-      >
-        <div className="timeline">
-          {appointments.map((a) => (
-            <div className="timeline-row" key={a.time}>
-              <time>{a.time}</time>
-              <div className={`timeline-event ${a.color}`}>
-                <span className="avatar">
-                  {a.name
-                    .split(" ")
-                    .map((x) => x[0])
-                    .join("")}
-                </span>
-                <div>
-                  <strong>{a.name}</strong>
-                  <small>
-                    {a.service} · {a.professional}
-                  </small>
-                </div>
-                <b>{a.status}</b>
-                <MoreHorizontal />
-              </div>
-            </div>
-          ))}
-        </div>
-      </Panel>
-    </>
-  );
-}
-
-function ConversationsView() {
-  const [active, setActive] = useState(0);
-  const [message, setMessage] = useState("");
-  const [sent, setSent] = useState<string[]>([]);
-  return (
-    <div className="inbox">
-      <aside>
-        <div className="inbox-search">
-          <Search />
-          <input placeholder="Buscar conversas" />
-        </div>
-        <div className="inbox-tabs">
-          <button className="active">Todas</button>
-          <button>Não lidas</button>
-          <button>Humano</button>
-        </div>
-        {conversations.map((c, i) => (
-          <button
-            key={c.name}
-            className={`conversation-row ${active === i ? "active" : ""}`}
-            onClick={() => setActive(i)}
-          >
-            <span>{c.initials}</span>
-            <div>
-              <strong>
-                {c.name}
-                <small>{c.time}</small>
-              </strong>
-              <p>{c.message}</p>
-              <em>{c.state}</em>
-            </div>
-            {c.unread > 0 && <b>{c.unread}</b>}
-          </button>
-        ))}
-      </aside>
-      <section className="chat">
-        <header>
-          <span>{conversations[active].initials}</span>
-          <div>
-            <strong>{conversations[active].name}</strong>
-            <small>Cliente desde setembro de 2026</small>
-          </div>
-          <button className="btn btn--soft">
-            <UserRound /> Assumir conversa
-          </button>
-        </header>
-        <div className="chat-area">
-          <div className="chat-day">HOJE</div>
-          <div className="chat-message incoming">
-            Olá! Gostaria de saber se tem horário para amanhã.
-          </div>
-          <div className="chat-message outgoing">
-            Olá! 👋 Temos horários disponíveis. Você gostaria de agendar qual serviço?
-            <small>09:14 · Q</small>
-          </div>
-          <div className="chat-message incoming">Corte e barba com o Rafael.</div>
-          <div className="chat-message outgoing">
-            Encontrei três opções: 9h, 10h30 e 14h. Qual funciona melhor?<small>09:15 · Q</small>
-          </div>
-          {sent.map((s, i) => (
-            <div className="chat-message outgoing" key={i}>
-              {s}
-              <small>agora · Você</small>
-            </div>
-          ))}
-        </div>
-        <form
-          className="chat-input"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (message.trim()) {
-              setSent([...sent, message]);
-              setMessage("");
-            }
-          }}
-        >
-          <button type="button">
+      <PageHead
+        title="Agenda"
+        text="Crie e acompanhe compromissos reais."
+        action={
+          <button className="btn btn--primary" onClick={() => setOpen((v) => !v)}>
             <Plus />
+            Novo agendamento
           </button>
-          <input
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            placeholder="Escreva uma mensagem..."
+        }
+      />
+      {open && (
+        <form className="editor" onSubmit={add}>
+          <Select
+            name="client_id"
+            label="Cliente"
+            required
+            items={clients.map((x) => [x.id, x.name])}
           />
-          <button className="send">
-            <Send />
+          <Select
+            name="service_id"
+            label="Serviço"
+            required
+            items={services.filter((x) => x.is_active).map((x) => [x.id, x.name])}
+          />
+          <Select
+            name="professional_id"
+            label="Profissional"
+            required
+            items={professionals.filter((x) => x.is_active).map((x) => [x.id, x.name])}
+          />
+          <label>
+            Data e hora
+            <input name="starts_at" type="datetime-local" required />
+          </label>
+          <label>
+            Observação
+            <input name="notes" placeholder="Opcional" />
+          </label>
+          <button className="btn btn--primary" disabled={busy}>
+            <Save />
+            {busy ? "Salvando…" : "Salvar"}
           </button>
         </form>
-      </section>
-      <aside className="contact-card">
-        <span className="big-avatar">{conversations[active].initials}</span>
-        <h3>{conversations[active].name}</h3>
-        <p>(27) 99912-3456</p>
-        <div>
-          <span>Próximo horário</span>
-          <strong>24 set · 10:30</strong>
-        </div>
-        <div>
-          <span>Último serviço</span>
-          <strong>Corte + Barba</strong>
-        </div>
-        <div>
-          <span>Total de visitas</span>
-          <strong>6 atendimentos</strong>
-        </div>
-      </aside>
-    </div>
-  );
-}
-
-function ClientsView() {
-  return (
-    <Panel
-      title="Clientes"
-      subtitle="328 clientes cadastrados"
-      action={
-        <button className="btn btn--primary">
-          <Plus /> Novo cliente
-        </button>
-      }
-      className="table-panel"
-    >
-      <div className="table-search">
-        <Search />
-        <input placeholder="Buscar por nome ou telefone" />
-      </div>
-      <table>
-        <thead>
-          <tr>
-            <th>Cliente</th>
-            <th>Telefone</th>
-            <th>Última visita</th>
-            <th>Agendamentos</th>
-            <th>Status</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {[
-            "Lucas Mendes",
-            "Ana Souza",
-            "Bruno Reis",
-            "Marina Costa",
-            "Felipe Rocha",
-            "André Lima",
-          ].map((n, i) => (
-            <tr key={n}>
-              <td>
-                <span className="table-avatar">
-                  {n
-                    .split(" ")
-                    .map((x) => x[0])
-                    .join("")}
-                </span>
-                <strong>{n}</strong>
-              </td>
-              <td>
-                (27) 999{10 + i}-12{30 + i}
-              </td>
-              <td>{i + 12}/09/2026</td>
-              <td>{i + 2}</td>
-              <td>
-                <b className="client-active">Ativo</b>
-              </td>
-              <td>
-                <MoreHorizontal />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </Panel>
-  );
-}
-function ServicesView() {
-  return (
-    <>
-      <div className="welcome-row">
-        <div>
-          <h2>Serviços e profissionais</h2>
-          <p>Configure o que sua empresa oferece e quem pode atender.</p>
-        </div>
-        <button className="btn btn--primary">
-          <Plus /> Novo serviço
-        </button>
-      </div>
-      <div className="service-grid">
-        {services.map((s, i) => (
-          <div className="service-card" key={s.name}>
-            <div className={`service-icon c${i}`}>
-              <WandSparkles />
-            </div>
-            <MoreHorizontal />
-            <h3>{s.name}</h3>
-            <p>
-              <Clock3 /> {s.duration}
-            </p>
-            <strong>{s.price}</strong>
-            <footer>
-              <Users /> {s.professionals} profissionais <span>Ativo</span>
-            </footer>
-          </div>
-        ))}
-      </div>
-    </>
-  );
-}
-
-function WhatsAppView() {
-  const [method, setMethod] = useState<"qr" | "code">("qr");
-  const [connected, setConnected] = useState(false);
-  return (
-    <div className="connect-layout">
-      <section className="connect-copy">
-        <span className="overline">INTEGRAÇÃO</span>
-        <h2>Conecte seu WhatsApp ao AgendaIQ</h2>
-        <p>
-          Quando um cliente enviar uma mensagem, o AgendaIQ responderá com o link personalizado para
-          ele escolher um horário.
-        </p>
-        {[
-          [Zap, "Resposta automática", "Atendimento imediato, 24 horas por dia."],
-          [LockKeyhole, "Conexão protegida", "Você pode desconectar quando quiser."],
-          [
-            MessageCircle,
-            "Confirmação no WhatsApp",
-            "O cliente recebe todos os detalhes após agendar.",
-          ],
-        ].map(([Icon, t, p]) => (
-          <div className="connect-benefit" key={String(t)}>
-            <Icon />
-            <span>
-              <strong>{String(t)}</strong>
-              <small>{String(p)}</small>
-            </span>
-          </div>
-        ))}
-      </section>
-      <section className="connect-card">
-        {connected ? (
-          <div className="connected-state">
-            <div className="success-ring">
-              <Check />
-            </div>
-            <span>WHATSAPP CONECTADO</span>
-            <h3>Studio Atlas</h3>
-            <p>+55 27 99912-3456</p>
-            <div className="connection-status">
-              <i /> Conectado e recebendo mensagens
-            </div>
-            <button className="btn btn--soft" onClick={() => setConnected(false)}>
-              Desconectar demonstração
-            </button>
-          </div>
-        ) : (
-          <>
-            <div className="connect-tabs">
-              <button className={method === "qr" ? "active" : ""} onClick={() => setMethod("qr")}>
-                <QrCode /> QR Code
-              </button>
-              <button
-                className={method === "code" ? "active" : ""}
-                onClick={() => setMethod("code")}
-              >
-                <Smartphone /> Código no celular
-              </button>
-            </div>
-            {method === "qr" ? (
-              <div className="qr-flow">
-                <h3>Escaneie com seu celular</h3>
-                <p>
-                  No WhatsApp, acesse <strong>Aparelhos conectados</strong>.
-                </p>
-                <div className="qr-demo">
-                  <QrPattern />
-                  <BrandMark />
-                </div>
-                <small>
-                  <span /> QR Code demonstrativo · 01:48
-                </small>
-                <button className="btn btn--primary" onClick={() => setConnected(true)}>
-                  Simular conexão
-                </button>
-              </div>
-            ) : (
-              <div className="code-flow">
-                <h3>Conecte pelo próprio celular</h3>
-                <p>Informe seu número e use o código exibido no WhatsApp.</p>
-                <label>
-                  Seu número
-                  <div>
-                    <span>+55</span>
-                    <input defaultValue="27 99912-3456" />
-                  </div>
-                </label>
-                <button className="btn btn--primary" onClick={() => setConnected(true)}>
-                  Gerar código de conexão
-                </button>
-                <div className="pairing-code">AG7 Q2K 9X</div>
-                <small>
-                  Fluxo demonstrativo. A conexão real exige o provedor configurado no servidor.
-                </small>
-              </div>
-            )}
-          </>
-        )}
-      </section>
-    </div>
-  );
-}
-function QrPattern() {
-  return (
-    <svg viewBox="0 0 120 120">
-      <rect width="120" height="120" rx="8" fill="white" />
-      {Array.from({ length: 12 }).flatMap((_, y) =>
-        Array.from({ length: 12 }).map((__, x) =>
-          (x * y + x + y * 3) % 4 !== 0 ? (
-            <rect
-              key={`${x}-${y}`}
-              x={8 + x * 8.7}
-              y={8 + y * 8.7}
-              width="6"
-              height="6"
-              rx="1"
-              fill="#101828"
-            />
-          ) : null,
-        ),
       )}
-    </svg>
-  );
-}
-
-function ReportsView() {
-  return (
-    <>
-      <div className="stat-grid">
-        {[
-          [CreditCard, "R$ 8.420", "Receita estimada", "+18%"],
-          [CalendarDays, "186", "Agendamentos", "+24%"],
-          [Users, "72", "Novos clientes", "+11%"],
-          [Bot, "78%", "Resolvidos pela IA", "+9%"],
-        ].map(([Icon, n, l, d]) => (
-          <div className="stat-card" key={String(l)}>
-            <div className="stat-icon indigo">
-              <Icon />
-            </div>
-            <span>{String(l)}</span>
-            <strong>{String(n)}</strong>
-            <small>
-              {String(d)} <em>no período</em>
-            </small>
-          </div>
-        ))}
-      </div>
-      <div className="report-grid">
-        <Panel title="Agendamentos por semana" subtitle="Últimos 30 dias">
-          <div className="big-bars">
-            {[45, 62, 55, 78, 68, 88, 72, 94, 80, 86, 71, 92].map((n, i) => (
-              <i key={i} style={{ height: `${n}%` }} />
-            ))}
-          </div>
-        </Panel>
-        <Panel title="Serviços mais procurados" subtitle="Participação no total">
-          {services.map((s, i) => (
-            <div className="rank" key={s.name}>
-              <b>{i + 1}</b>
-              <span>
-                {s.name}
-                <i>
-                  <em style={{ width: `${88 - i * 16}%` }} />
-                </i>
-              </span>
-              <strong>{42 - i * 7}</strong>
-            </div>
-          ))}
-        </Panel>
-      </div>
-    </>
-  );
-}
-function SettingsView({ booking }: { booking: () => void }) {
-  return (
-    <div className="settings-grid">
-      <Panel
-        title="Link de agendamento"
-        subtitle="Compartilhe com seus clientes"
-        className="settings-card"
-      >
-        <div className="public-link">
-          <Link2 />
-          <span>
-            <small>SEU LINK</small>
-            <strong>agendaiq.com.br/studio-atlas</strong>
-          </span>
-          <Copy />
-        </div>
-        <button className="btn btn--primary" onClick={booking}>
-          <ExternalLink /> Abrir página pública
-        </button>
-      </Panel>
-      <Panel
-        title="Personalidade da IA"
-        subtitle="Como o Q fala com seus clientes"
-        className="settings-card"
-      >
-        <label>
-          Tom de voz
-          <select defaultValue="acolhedor">
-            <option value="acolhedor">Acolhedor e profissional</option>
-            <option>Direto e objetivo</option>
-          </select>
-        </label>
-        <label>
-          Mensagem de boas-vindas
-          <textarea defaultValue="Olá! Eu sou o assistente virtual do Studio Atlas. Como posso ajudar você hoje?" />
-        </label>
-        <button className="btn btn--dark">Salvar alterações</button>
-      </Panel>
-      <section className="panel settings-card billing">
-        <CreditCard />
-        <div>
-          <span>PLANO ATUAL</span>
-          <h3>AgendaIQ Profissional</h3>
-          <p>R$ 49,90 por mês · 4 dias de teste restantes</p>
-        </div>
-        <button className="btn btn--soft">Gerenciar assinatura</button>
-      </section>
-    </div>
-  );
-}
-
-function Booking({ back }: { back: () => void }) {
-  const [step, setStep] = useState(1);
-  const [service, setService] = useState(0);
-  const [time, setTime] = useState("");
-  const [open, setOpen] = useState(false);
-  const [question, setQuestion] = useState("");
-  const [chat, setChat] = useState<string[]>([]);
-  return (
-    <div className="booking-page">
-      <header>
-        <BrandLogo />
-        <button onClick={back}>
-          <ArrowLeft /> Voltar
-        </button>
-      </header>
-      <div className="booking-hero">
-        <span>STUDIO ATLAS</span>
-        <h1>Reserve seu horário</h1>
-        <p>Escolha o serviço e encontre o melhor momento para você.</p>
-        <div className="booking-progress">
-          <i className={step >= 1 ? "active" : ""} />
-          <i className={step >= 2 ? "active" : ""} />
-          <i className={step >= 3 ? "active" : ""} />
-        </div>
-      </div>
-      <div className="booking-wrap">
-        <aside className="business-card">
-          <div className="business-cover">
-            <div>SA</div>
-          </div>
-          <h3>Studio Atlas</h3>
-          <p>Barbearia premium em Vitória, ES</p>
-          <div>
-            <Clock3 />
-            <span>
-              <strong>Aberto hoje</strong>
-              <small>08:00 às 19:00</small>
-            </span>
-          </div>
-          <div>
-            <MessageCircle />
-            <span>
-              <strong>Atendimento inteligente</strong>
-              <small>Tire dúvidas com o Q</small>
-            </span>
-          </div>
-          <button onClick={() => setOpen(true)}>
-            <Bot /> Conversar com o Q
-          </button>
-        </aside>
-        <section className="booking-card">
-          {step === 1 && (
-            <>
-              <BookingTitle
-                step="1"
-                title="Qual serviço você deseja?"
-                text="Selecione uma opção para continuar."
-              />
-              <div className="booking-services">
-                {services.map((s, i) => (
+      <div className="panel">
+        {appointments.length ? (
+          <div className="rows">
+            {appointments.map((a) => (
+              <div className="row-actions" key={a.id}>
+                <AppointmentRow item={a} />
+                {a.status !== "cancelado" && (
                   <button
-                    key={s.name}
-                    className={service === i ? "active" : ""}
-                    onClick={() => setService(i)}
+                    className="icon-btn danger"
+                    title="Cancelar"
+                    onClick={() => void cancel(a.id)}
                   >
-                    <div>
-                      <strong>{s.name}</strong>
-                      <span>{s.duration}</span>
-                    </div>
-                    <b>{s.price}</b>
-                    {service === i && <CheckCircle2 />}
+                    <X />
                   </button>
-                ))}
-              </div>
-              <button className="btn btn--primary btn--lg booking-next" onClick={() => setStep(2)}>
-                Escolher horário <ArrowRight />
-              </button>
-            </>
-          )}
-          {step === 2 && (
-            <>
-              <button className="inline-back" onClick={() => setStep(1)}>
-                <ArrowLeft /> Voltar
-              </button>
-              <BookingTitle
-                step="2"
-                title="Escolha o melhor horário"
-                text="Quarta-feira, 23 de setembro"
-              />
-              <div className="date-strip">
-                {weekDays.slice(1, 6).map((d, i) => (
-                  <button className={i === 1 ? "active" : ""} key={d.day}>
-                    <span>{d.week}</span>
-                    <strong>{d.day}</strong>
-                  </button>
-                ))}
-              </div>
-              <h4>Horários disponíveis</h4>
-              <div className="time-grid">
-                {timeSlots.map((t) => (
-                  <button key={t} className={time === t ? "active" : ""} onClick={() => setTime(t)}>
-                    {t}
-                  </button>
-                ))}
-              </div>
-              <button
-                disabled={!time}
-                className="btn btn--primary btn--lg booking-next"
-                onClick={() => setStep(3)}
-              >
-                Confirmar dados <ArrowRight />
-              </button>
-            </>
-          )}
-          {step === 3 && (
-            <>
-              <button className="inline-back" onClick={() => setStep(2)}>
-                <ArrowLeft /> Voltar
-              </button>
-              <BookingTitle
-                step="3"
-                title="Está quase tudo pronto"
-                text="Confira os dados antes de confirmar."
-              />
-              <div className="booking-summary">
-                <div>
-                  <WandSparkles />
-                  <span>
-                    <small>SERVIÇO</small>
-                    <strong>{services[service].name}</strong>
-                  </span>
-                  <b>{services[service].price}</b>
-                </div>
-                <div>
-                  <CalendarDays />
-                  <span>
-                    <small>DATA E HORÁRIO</small>
-                    <strong>23 de setembro · {time}</strong>
-                  </span>
-                </div>
-                <div>
-                  <UserRound />
-                  <span>
-                    <small>PROFISSIONAL</small>
-                    <strong>Rafael</strong>
-                  </span>
-                </div>
-              </div>
-              <label className="booking-input">
-                Seu nome
-                <input defaultValue="Lucas Mendes" />
-              </label>
-              <label className="booking-input">
-                WhatsApp
-                <input defaultValue="(27) 99912-3456" />
-              </label>
-              <button className="btn btn--primary btn--lg booking-next" onClick={() => setStep(4)}>
-                <Check /> Confirmar agendamento
-              </button>
-            </>
-          )}
-          {step === 4 && (
-            <div className="booking-success">
-              <div className="success-ring">
-                <Check />
-              </div>
-              <span>AGENDAMENTO CONFIRMADO</span>
-              <h2>Está tudo certo, Lucas!</h2>
-              <p>Seu horário foi reservado. Também enviamos a confirmação para o seu WhatsApp.</p>
-              <div>
-                <strong>{services[service].name}</strong>
-                <span>23 de setembro · {time} · com Rafael</span>
-              </div>
-              <button className="btn btn--dark" onClick={back}>
-                Concluir
-              </button>
-            </div>
-          )}
-        </section>
-      </div>
-      <button className="chat-fab" onClick={() => setOpen(!open)}>
-        {open ? (
-          <X />
-        ) : (
-          <>
-            <Bot />
-            <span>Posso ajudar?</span>
-          </>
-        )}
-      </button>
-      {open && (
-        <div className="booking-chat">
-          <header>
-            <Mascot className="chat-mascot" />
-            <div>
-              <strong>Q · Assistente virtual</strong>
-              <small>
-                <i /> Online agora
-              </small>
-            </div>
-            <button onClick={() => setOpen(false)}>
-              <X />
-            </button>
-          </header>
-          <div className="booking-chat__body">
-            <div className="chat-message outgoing">
-              Olá! 👋 Posso explicar os serviços ou ajudar você a escolher um horário.
-            </div>
-            {chat.map((m, i) => (
-              <div key={i}>
-                <div className="chat-message incoming">{m}</div>
-                <div className="chat-message outgoing">
-                  O Corte + Barba dura 75 minutos e custa R$ 85. Posso ajudar você a reservar?
-                </div>
+                )}
               </div>
             ))}
           </div>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (question.trim()) {
-                setChat([...chat, question]);
-                setQuestion("");
-              }
-            }}
-          >
-            <input
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-              placeholder="Digite sua dúvida..."
-            />
-            <button>
-              <Send />
-            </button>
-          </form>
-        </div>
+        ) : (
+          <Empty icon={CalendarDays} title="Agenda vazia" text="Cadastre o primeiro agendamento." />
+        )}
+      </div>
+    </>
+  );
+}
+
+function Clients({
+  org,
+  items,
+  reload,
+}: {
+  org: Organization;
+  items: Client[];
+  reload: () => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  async function add(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    const { error } = await supabase.from("clients").insert({
+      organization_id: org.id,
+      name: f.get("name"),
+      phone: f.get("phone") || null,
+      email: f.get("email") || null,
+    });
+    if (error) toast.error("Não foi possível cadastrar o cliente.");
+    else {
+      toast.success("Cliente cadastrado.");
+      setOpen(false);
+      await reload();
+    }
+  }
+  return (
+    <>
+      <PageHead
+        title="Clientes"
+        text="Base atualizada em tempo real."
+        action={
+          <button className="btn btn--primary" onClick={() => setOpen((v) => !v)}>
+            <Plus />
+            Novo cliente
+          </button>
+        }
+      />
+      {open && (
+        <form className="editor" onSubmit={add}>
+          <label>
+            Nome
+            <input name="name" required />
+          </label>
+          <label>
+            WhatsApp
+            <input name="phone" inputMode="tel" placeholder="5511999999999" />
+          </label>
+          <label>
+            E-mail
+            <input name="email" type="email" />
+          </label>
+          <button className="btn btn--primary">
+            <Save />
+            Salvar
+          </button>
+        </form>
       )}
+      <div className="panel">
+        <div className="table-head">
+          <span>Cliente</span>
+          <span>Contato</span>
+          <span>Status</span>
+        </div>
+        {items.map((x) => (
+          <div className="table-line" key={x.id}>
+            <strong>{x.name}</strong>
+            <span>{x.phone || x.email || "Não informado"}</span>
+            <span className="status">{x.status}</span>
+          </div>
+        ))}
+        {!items.length && (
+          <Empty
+            icon={Users}
+            title="Nenhum cliente"
+            text="Os clientes criados pelo WhatsApp e pela agenda aparecerão aqui."
+          />
+        )}
+      </div>
+    </>
+  );
+}
+
+function Services({
+  org,
+  items,
+  professionals,
+  reload,
+}: {
+  org: Organization;
+  items: Service[];
+  professionals: Professional[];
+  reload: () => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  async function add(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    const { error } = await supabase.from("services").insert({
+      organization_id: org.id,
+      name: f.get("name"),
+      description: f.get("description") || null,
+      duration_minutes: Number(f.get("duration")),
+      price_cents: Math.round(Number(f.get("price")) * 100),
+      professional_id: f.get("professional_id") || null,
+    });
+    if (error) toast.error("Não foi possível salvar o serviço.");
+    else {
+      toast.success("Serviço salvo.");
+      setOpen(false);
+      await reload();
+    }
+  }
+  async function remove(id: string) {
+    const { error } = await supabase.from("services").update({ is_active: false }).eq("id", id);
+    if (error) toast.error("Não foi possível desativar.");
+    else await reload();
+  }
+  return (
+    <>
+      <PageHead
+        title="Serviços"
+        text="A IA usa estes dados para orientar seus clientes."
+        action={
+          <button className="btn btn--primary" onClick={() => setOpen((v) => !v)}>
+            <Plus />
+            Novo serviço
+          </button>
+        }
+      />
+      {open && (
+        <form className="editor" onSubmit={add}>
+          <label>
+            Nome
+            <input name="name" required />
+          </label>
+          <label>
+            Preço (R$)
+            <input name="price" type="number" min="0" step="0.01" required />
+          </label>
+          <label>
+            Duração (min)
+            <input name="duration" type="number" min="5" step="5" defaultValue="30" required />
+          </label>
+          <Select
+            name="professional_id"
+            label="Profissional"
+            items={professionals.map((x) => [x.id, x.name])}
+          />
+          <label className="wide">
+            Descrição
+            <input name="description" />
+          </label>
+          <button className="btn btn--primary">
+            <Save />
+            Salvar
+          </button>
+        </form>
+      )}
+      <div className="cards-grid">
+        {items.map((x) => (
+          <article className={`service-card ${!x.is_active ? "muted" : ""}`} key={x.id}>
+            <div>
+              <Sparkles />
+              <span className="status">{x.is_active ? "Ativo" : "Inativo"}</span>
+            </div>
+            <h3>{x.name}</h3>
+            <p>{x.description || "Sem descrição"}</p>
+            <footer>
+              <strong>
+                {(x.price_cents / 100).toLocaleString("pt-BR", {
+                  style: "currency",
+                  currency: "BRL",
+                })}
+              </strong>
+              <span>
+                <Clock3 />
+                {x.duration_minutes} min
+              </span>
+              {x.is_active && (
+                <button
+                  className="icon-btn danger"
+                  title="Desativar"
+                  onClick={() => void remove(x.id)}
+                >
+                  <Trash2 />
+                </button>
+              )}
+            </footer>
+          </article>
+        ))}
+      </div>
+    </>
+  );
+}
+
+type WhatsAppIntegration = {
+  status: string;
+  config?: { verified_name?: string; display_phone_number?: string };
+};
+
+function WhatsApp({ org }: { org: Organization }) {
+  const [state, setState] = useState<WhatsAppIntegration | null>(null),
+    [busy, setBusy] = useState(true),
+    [connect, setConnect] = useState(false);
+  const call = useCallback(
+    async (action: string, extra = {}) => {
+      setBusy(true);
+      const { data, error } = await supabase.functions.invoke("integration-manager", {
+        body: { action, organizationId: org.id, ...extra },
+      });
+      setBusy(false);
+      if (error || data?.error) {
+        toast.error(data?.error || "Falha na integração.");
+        return null;
+      }
+      if (action === "status") setState(data.integration);
+      return data;
+    },
+    [org.id],
+  );
+  useEffect(() => {
+    void call("status");
+  }, [call]);
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    const data = await call("connect", {
+      phoneNumberId: f.get("phoneNumberId"),
+      wabaId: f.get("wabaId"),
+      accessToken: f.get("accessToken"),
+      appSecret: f.get("appSecret"),
+      publicBaseUrl: window.location.origin,
+      autoReplyMessage: f.get("message"),
+    });
+    if (data) {
+      setState(data.integration);
+      setConnect(false);
+      toast.success("Credenciais validadas. Finalize o webhook na Meta.");
+    }
+  }
+  async function disconnect() {
+    const data = await call("disconnect");
+    if (data) {
+      setState(null);
+      toast.success("WhatsApp desconectado.");
+    }
+  }
+  const connected = state?.status === "conectado";
+  return (
+    <>
+      <PageHead
+        title="WhatsApp"
+        text="Conexão oficial com a API da Meta, sem armazenar o token no navegador."
+      />
+      <div className="connection-card">
+        <div className={`connection-icon ${connected ? "ok" : ""}`}>
+          <Wifi />
+        </div>
+        <div>
+          <span className="overline">STATUS DA CONEXÃO</span>
+          <h2>
+            {busy ? "Verificando…" : connected ? "WhatsApp conectado" : "WhatsApp não conectado"}
+          </h2>
+          <p>
+            {connected
+              ? `${state.config?.verified_name || "Conta comercial"} · ${state.config?.display_phone_number || "Número validado"}`
+              : "Conecte uma conta do WhatsApp Business Platform para receber mensagens e enviar o link automático."}
+          </p>
+        </div>
+        <div className="connection-actions">
+          {connected ? (
+            <>
+              <span className="live-pill">
+                <span />
+                Online
+              </span>
+              <button className="btn btn--soft" onClick={() => void disconnect()}>
+                Desconectar
+              </button>
+            </>
+          ) : (
+            <button className="btn btn--primary" onClick={() => setConnect((v) => !v)}>
+              <Smartphone />
+              Conectar WhatsApp
+            </button>
+          )}
+        </div>
+      </div>
+      {connect && (
+        <form className="editor whatsapp-form" onSubmit={submit}>
+          <div className="wide setup-note">
+            <ShieldCheck />
+            <span>
+              Use os dados do seu aplicativo na Meta. O token e o App Secret são enviados
+              diretamente ao cofre criptografado do backend.
+            </span>
+          </div>
+          <label>
+            Phone Number ID
+            <input name="phoneNumberId" required />
+          </label>
+          <label>
+            WABA ID
+            <input name="wabaId" required />
+          </label>
+          <label>
+            Token permanente
+            <input name="accessToken" type="password" required />
+          </label>
+          <label>
+            App Secret
+            <input name="appSecret" type="password" required />
+          </label>
+          <label className="wide">
+            Mensagem automática
+            <textarea
+              name="message"
+              defaultValue="Olá! 👋 Para consultar horários disponíveis e falar com nossa assistente, acesse o link abaixo:"
+            />
+          </label>
+          <button className="btn btn--primary" disabled={busy}>
+            <Wifi />
+            {busy ? "Validando…" : "Validar e conectar"}
+          </button>
+        </form>
+      )}
+      <div className="info-grid">
+        <article>
+          <ShieldCheck />
+          <h3>Integração real</h3>
+          <p>As credenciais são validadas pela Meta e ficam protegidas no Vault do banco.</p>
+        </article>
+        <article>
+          <Link2 />
+          <h3>Link automático</h3>
+          <p>Ao receber uma mensagem, o webhook envia o link individual do atendimento.</p>
+        </article>
+        <article>
+          <Bot />
+          <h3>IA + agenda</h3>
+          <p>A conversa usa serviços, profissionais e disponibilidade reais da sua empresa.</p>
+        </article>
+      </div>
+      <div className="notice">
+        <strong>Sobre QR Code</strong>
+        <p>
+          A API oficial do WhatsApp Business não usa leitura de QR Code. Exibir um QR falso seria
+          inseguro. O fluxo oficial acima é estável para produção; o login incorporado da Meta pode
+          ser ativado após aprovação do aplicativo Meta.
+        </p>
+      </div>
+    </>
+  );
+}
+
+function Configuration({ org, reload }: { org: Organization; reload: () => Promise<void> }) {
+  async function save(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget),
+      slug = String(f.get("slug"))
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9-]/g, "-");
+    const { error } = await supabase
+      .from("organizations")
+      .update({
+        name: f.get("name"),
+        slug,
+        phone: f.get("phone") || null,
+        email: f.get("email") || null,
+        description: f.get("description") || null,
+        onboarding_completed: true,
+      })
+      .eq("id", org.id);
+    if (error) toast.error("Não foi possível salvar. O endereço pode já estar em uso.");
+    else {
+      toast.success("Configurações salvas.");
+      await reload();
+    }
+  }
+  return (
+    <>
+      <PageHead title="Configurações" text="Dados usados na página pública e pela IA." />
+      <form className="settings-card" onSubmit={save}>
+        <label>
+          Nome da empresa
+          <input name="name" defaultValue={org.name} required />
+        </label>
+        <label>
+          Endereço público
+          <input name="slug" defaultValue={org.slug || ""} required />
+          <small>Use letras, números e hífen.</small>
+        </label>
+        <label>
+          Telefone
+          <input name="phone" defaultValue={org.phone || ""} />
+        </label>
+        <label>
+          E-mail
+          <input name="email" type="email" defaultValue={org.email || ""} />
+        </label>
+        <label className="wide">
+          Descrição
+          <textarea name="description" defaultValue={org.description || ""} />
+        </label>
+        <button className="btn btn--primary">
+          <Save />
+          Salvar alterações
+        </button>
+        {org.slug && (
+          <a className="btn btn--soft" href={`/chat/${org.slug}`} target="_blank" rel="noreferrer">
+            <ExternalLink />
+            Abrir atendimento público
+          </a>
+        )}
+      </form>
+    </>
+  );
+}
+
+function PageHead({
+  title,
+  text,
+  action,
+}: {
+  title: string;
+  text: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="page-head">
+      <div>
+        <h2>{title}</h2>
+        <p>{text}</p>
+      </div>
+      {action}
     </div>
   );
 }
-function BookingTitle({ step, title, text }: { step: string; title: string; text: string }) {
+function Empty({ icon: Icon, title, text }: { icon: typeof Home; title: string; text: string }) {
   return (
-    <div className="booking-title">
-      <span>PASSO {step} DE 3</span>
-      <h2>{title}</h2>
+    <div className="empty">
+      <Icon />
+      <h3>{title}</h3>
       <p>{text}</p>
     </div>
+  );
+}
+function Select({
+  name,
+  label,
+  items,
+  required = false,
+}: {
+  name: string;
+  label: string;
+  items: Array<[string, string]>;
+  required?: boolean;
+}) {
+  return (
+    <label>
+      {label}
+      <select name={name} required={required}>
+        <option value="">Selecione</option>
+        {items.map(([id, text]) => (
+          <option value={id} key={id}>
+            {text}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
