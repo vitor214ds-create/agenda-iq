@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { Bot, CalendarDays, LoaderCircle, Send, ShieldCheck } from "lucide-react";
 import { BrandLogo } from "../components/brand";
 import { supabase } from "../lib/supabase";
@@ -23,6 +23,16 @@ function PublicChat() {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const handoff = params.get("handoff");
+    const initialName = params.get("name");
+    const initialPhone = params.get("phone");
+    if (handoff) setToken(handoff);
+    if (initialName) setName(initialName);
+    if (initialPhone) setPhone(initialPhone);
+    if (handoff && initialPhone) setStarted(true);
+  }, []);
   function begin(e: FormEvent) {
     e.preventDefault();
     setStarted(true);

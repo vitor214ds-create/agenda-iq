@@ -19,6 +19,7 @@ import {
   Menu,
   MessageCircle,
   Plus,
+  QrCode,
   RefreshCw,
   Save,
   Settings,
@@ -946,19 +947,26 @@ function Services({
   );
 }
 
-type WhatsAppIntegration = {
-  status: string;
-  config?: { verified_name?: string; display_phone_number?: string };
+type WhatsAppAccount = {
+  id: string;
+  phone: string | null;
+  internal_name: string | null;
+  connection_status: string | null;
 };
 
 function WhatsApp({ org }: { org: Organization }) {
-  const [state, setState] = useState<WhatsAppIntegration | null>(null),
+  const [accounts, setAccounts] = useState<WhatsAppAccount[]>([]),
+    [configured, setConfigured] = useState(false),
     [busy, setBusy] = useState(true),
-    [connect, setConnect] = useState(false);
+    [setup, setSetup] = useState(false),
+    [method, setMethod] = useState<"qr" | "code">("qr"),
+    [qrCode, setQrCode] = useState<string | null>(null),
+    [pairingCode, setPairingCode] = useState<string | null>(null),
+    [activeAccount, setActiveAccount] = useState<string | null>(null);
   const call = useCallback(
     async (action: string, extra = {}) => {
       setBusy(true);
-      const { data, error } = await supabase.functions.invoke("integration-manager", {
+      const { data, error } = await supabase.functions.invoke("evolution-manager", {
         body: { action, organizationId: org.id, ...extra },
       });
       setBusy(false);
@@ -966,7 +974,10 @@ function WhatsApp({ org }: { org: Organization }) {
         toast.error(data?.error || "Falha na integração.");
         return null;
       }
-      if (action === "status") setState(data.integration);
+      if (action === "status") {
+        setAccounts(data.accounts || []);
+        setConfigured(Boolean(data.configured));
+      }
       return data;
     },
     [org.id],
@@ -974,50 +985,60 @@ function WhatsApp({ org }: { org: Organization }) {
   useEffect(() => {
     void call("status");
   }, [call]);
-  async function submit(e: FormEvent<HTMLFormElement>) {
+  async function configure(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    const data = await call("configure", {
+      baseUrl: f.get("baseUrl"),
+      apiKey: f.get("apiKey"),
+      publicBaseUrl: window.location.origin,
+    });
+    if (data) {
+      setConfigured(true);
+      toast.success("Servidor Evolution validado e protegido.");
+    }
+  }
+  async function connect(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
     const data = await call("connect", {
-      phoneNumberId: f.get("phoneNumberId"),
-      wabaId: f.get("wabaId"),
-      accessToken: f.get("accessToken"),
-      appSecret: f.get("appSecret"),
-      publicBaseUrl: window.location.origin,
-      autoReplyMessage: f.get("message"),
+      name: f.get("name"),
+      phone: method === "code" ? f.get("phone") : "",
     });
     if (data) {
-      setState(data.integration);
-      setConnect(false);
-      toast.success("Credenciais validadas. Finalize o webhook na Meta.");
+      setActiveAccount(data.accountId);
+      setQrCode(data.qrCode);
+      setPairingCode(data.pairingCode);
+      toast.success(method === "qr" ? "QR Code gerado." : "Código de pareamento gerado.");
+      await call("status");
     }
   }
-  async function disconnect() {
-    const data = await call("disconnect");
-    if (data) {
-      setState(null);
+  async function refresh(accountId: string) {
+    const data = await call("refresh", { accountId });
+    if (data?.state === "CONNECTED") toast.success("WhatsApp conectado com sucesso.");
+    await call("status");
+  }
+  async function disconnect(accountId: string) {
+    if (await call("disconnect", { accountId })) {
       toast.success("WhatsApp desconectado.");
+      await call("status");
     }
   }
-  const connected = state?.status === "conectado";
+  const connected = accounts.find((item) => item.connection_status === "CONNECTED");
   return (
     <>
-      <PageHead
-        title="WhatsApp"
-        text="Conexão oficial com a API da Meta, sem armazenar o token no navegador."
-      />
+      <PageHead title="WhatsApp" text="Conecte pelo QR Code ou pelo código exibido no celular." />
       <div className="connection-card">
         <div className={`connection-icon ${connected ? "ok" : ""}`}>
           <Wifi />
         </div>
         <div>
           <span className="overline">STATUS DA CONEXÃO</span>
-          <h2>
-            {busy ? "Verificando…" : connected ? "WhatsApp conectado" : "WhatsApp não conectado"}
-          </h2>
+          <h2>{busy ? "Verificando…" : connected ? "WhatsApp conectado" : "Aguardando conexão"}</h2>
           <p>
             {connected
-              ? `${state.config?.verified_name || "Conta comercial"} · ${state.config?.display_phone_number || "Número validado"}`
-              : "Conecte uma conta do WhatsApp Business Platform para receber mensagens e enviar o link automático."}
+              ? `${connected.internal_name || "WhatsApp principal"}${connected.phone ? ` · +${connected.phone}` : ""}`
+              : "Escaneie o QR Code ou use o código de pareamento para ativar as respostas automáticas."}
           </p>
         </div>
         <div className="connection-actions">
@@ -1027,61 +1048,128 @@ function WhatsApp({ org }: { org: Organization }) {
                 <span />
                 Online
               </span>
-              <button className="btn btn--soft" onClick={() => void disconnect()}>
+              <button className="btn btn--soft" onClick={() => void disconnect(connected.id)}>
                 Desconectar
               </button>
             </>
           ) : (
-            <button className="btn btn--primary" onClick={() => setConnect((v) => !v)}>
+            <button className="btn btn--primary" onClick={() => setSetup((v) => !v)}>
               <Smartphone />
               Conectar WhatsApp
             </button>
           )}
         </div>
       </div>
-      {connect && (
-        <form className="editor whatsapp-form" onSubmit={submit}>
+      {setup && !configured && (
+        <form className="editor whatsapp-form" onSubmit={configure}>
           <div className="wide setup-note">
             <ShieldCheck />
             <span>
-              Use os dados do seu aplicativo na Meta. O token e o App Secret são enviados
-              diretamente ao cofre criptografado do backend.
+              Configuração única do servidor Evolution. A chave fica criptografada no Vault e nunca
+              é devolvida ao navegador.
             </span>
           </div>
           <label>
-            Phone Number ID
-            <input name="phoneNumberId" required />
-          </label>
-          <label>
-            WABA ID
-            <input name="wabaId" required />
-          </label>
-          <label>
-            Token permanente
-            <input name="accessToken" type="password" required />
-          </label>
-          <label>
-            App Secret
-            <input name="appSecret" type="password" required />
-          </label>
-          <label className="wide">
-            Mensagem automática
-            <textarea
-              name="message"
-              defaultValue="Olá! 👋 Para consultar horários disponíveis e falar com nossa assistente, acesse o link abaixo:"
+            URL HTTPS da Evolution API
+            <input
+              name="baseUrl"
+              type="url"
+              placeholder="https://evolution.seudominio.com"
+              required
             />
+          </label>
+          <label>
+            API Key global
+            <input name="apiKey" type="password" required />
           </label>
           <button className="btn btn--primary" disabled={busy}>
             <Wifi />
-            {busy ? "Validando…" : "Validar e conectar"}
+            {busy ? "Validando…" : "Salvar servidor"}
           </button>
         </form>
       )}
+      {setup && configured && !qrCode && !pairingCode && (
+        <form className="editor whatsapp-form" onSubmit={connect}>
+          <div className="wide connect-tabs">
+            <button
+              type="button"
+              className={method === "qr" ? "active" : ""}
+              onClick={() => setMethod("qr")}
+            >
+              <QrCode />
+              QR Code
+            </button>
+            <button
+              type="button"
+              className={method === "code" ? "active" : ""}
+              onClick={() => setMethod("code")}
+            >
+              <Smartphone />
+              Código no celular
+            </button>
+          </div>
+          <label>
+            Nome da conexão
+            <input name="name" defaultValue="WhatsApp principal" required />
+          </label>
+          {method === "code" && (
+            <label>
+              Número com DDD
+              <input name="phone" inputMode="tel" placeholder="5511999999999" required />
+            </label>
+          )}
+          <button className="btn btn--primary" disabled={busy}>
+            {method === "qr" ? <QrCode /> : <Smartphone />}
+            {busy ? "Gerando…" : "Gerar conexão"}
+          </button>
+        </form>
+      )}
+      {(qrCode || pairingCode) && (
+        <div className="pairing-panel">
+          <span className="overline">CONECTE AGORA</span>
+          {qrCode && (
+            <img
+              src={qrCode.startsWith("data:") ? qrCode : `data:image/png;base64,${qrCode}`}
+              alt="QR Code real para conectar o WhatsApp"
+            />
+          )}
+          {pairingCode && (
+            <>
+              <p>No WhatsApp, abra Aparelhos conectados → Conectar com número de telefone.</p>
+              <strong>{pairingCode}</strong>
+            </>
+          )}
+          <p>Depois de concluir no celular, confirme o status.</p>
+          <button
+            className="btn btn--primary"
+            onClick={() => activeAccount && void refresh(activeAccount)}
+          >
+            <RefreshCw />
+            Já conectei
+          </button>
+        </div>
+      )}
+      {accounts
+        .filter((a) => a.connection_status !== "CONNECTED")
+        .map((account) => (
+          <div className="session-row" key={account.id}>
+            <span>
+              <strong>{account.internal_name || "WhatsApp"}</strong>
+              <small>{account.connection_status || "DISCONNECTED"}</small>
+            </span>
+            <button className="btn btn--soft" onClick={() => void refresh(account.id)}>
+              <RefreshCw />
+              Verificar
+            </button>
+          </div>
+        ))}
       <div className="info-grid">
         <article>
           <ShieldCheck />
           <h3>Integração real</h3>
-          <p>As credenciais são validadas pela Meta e ficam protegidas no Vault do banco.</p>
+          <p>
+            A sessão Evolution fica isolada por empresa e o acesso ao gateway permanece no Vault.
+          </p>
         </article>
         <article>
           <Link2 />
@@ -1095,11 +1183,10 @@ function WhatsApp({ org }: { org: Organization }) {
         </article>
       </div>
       <div className="notice">
-        <strong>Sobre QR Code</strong>
+        <strong>Conexão não oficial</strong>
         <p>
-          A API oficial do WhatsApp Business não usa leitura de QR Code. Exibir um QR falso seria
-          inseguro. O fluxo oficial acima é estável para produção; o login incorporado da Meta pode
-          ser ativado após aprovação do aplicativo Meta.
+          Essa modalidade depende do WhatsApp Web e pode desconectar ou sofrer bloqueio. Use um
+          número dedicado, evite disparos em massa e mantenha consentimento dos contatos.
         </p>
       </div>
     </>
